@@ -1,0 +1,19 @@
+
+name: Verify GitHub Actions
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 23f2000036@ds.study.iitm.ac.in
+        run: echo "Hello, world!"
