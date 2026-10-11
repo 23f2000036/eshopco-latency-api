@@ -7,11 +7,13 @@ import os
 
 app = FastAPI()
 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["POST", "OPTIONS"],
     allow_headers=["*"],
+    allow_credentials=False,
 )
 
 data_path = os.path.join(
