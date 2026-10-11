@@ -1,66 +1,80 @@
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import json
 import math
 import os
 
 app = FastAPI()
 
-
+# Enable CORS for all origins, including POST and OPTIONS.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["POST", "OPTIONS"],
-    allow_headers=["*"],
     allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-data_path = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "telemetry.json"
-)
+# Load telemetry.json from the repository root.
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_PATH = os.path.join(BASE_DIR, "telemetry.json")
 
-with open(data_path, encoding="utf-8") as f:
-    records = json.load(f)
+with open(DATA_PATH, "r", encoding="utf-8") as file:
+    records = json.load(file)
 
 
-@app.post("/")
+def calculate_p95(values):
+    """Calculate the nearest-rank 95th percentile."""
+    if not values:
+        return 0
+
+    ordered = sorted(values)
+    index = math.ceil(0.95 * len(ordered)) - 1
+    return ordered[index]
+
+
 @app.post("/api")
+@app.post("/")
 async def get_metrics(request: Request):
     body = await request.json()
+
     regions = body.get("regions", [])
     threshold = float(body.get("threshold_ms", 180))
 
-    result = []
+    results = []
 
     for region in regions:
-        rows = [
-            r for r in records
-            if r["region"].lower() == region.lower()
+        region_records = [
+            record for record in records
+            if record.get("region", "").lower() == region.lower()
         ]
 
-        latencies = sorted(
-            float(r["latency_ms"]) for r in rows
-        )
+        latencies = [
+            float(record["latency_ms"])
+            for record in region_records
+        ]
+
         uptimes = [
-            float(r["uptime_pct"]) for r in rows
+            float(record["uptime_pct"])
+            for record in region_records
         ]
 
         if latencies:
             avg_latency = sum(latencies) / len(latencies)
-            p95_latency = latencies[
-                math.ceil(0.95 * len(latencies)) - 1
-            ]
+            p95_latency = calculate_p95(latencies)
             avg_uptime = sum(uptimes) / len(uptimes)
-            breaches = sum(x > threshold for x in latencies)
+            breaches = sum(
+                latency > threshold for latency in latencies
+            )
         else:
             avg_latency = 0
             p95_latency = 0
             avg_uptime = 0
             breaches = 0
 
-        result.append({
+        results.append({
             "region": region,
             "avg_latency": avg_latency,
             "p95_latency": p95_latency,
@@ -68,4 +82,7 @@ async def get_metrics(request: Request):
             "breaches": breaches
         })
 
-    return {"regions": result}
+    return JSONResponse(
+        content={"regions": results},
+        headers={"Access-Control-Allow-Origin": "*"}
+    )
